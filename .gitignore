@@ -1,0 +1,36 @@
+# -------------------
+# Python
+# -------------------
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.env
+
+# -------------------
+# Uploads & AI Data
+# -------------------
+backend/uploads/
+backend/app/ai/chroma_db/
+*.pt
+*.bin
+*.onnx
+
+# -------------------
+# Node / Frontend
+# -------------------
+node_modules/
+.next/
+dist/
+build/
+
+# -------------------
+# OS Files
+# -------------------
+.DS_Store
+Thumbs.db
+
+# -------------------
+# Logs
+# -------------------
+*.log

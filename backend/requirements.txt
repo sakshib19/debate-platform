@@ -1,0 +1,33 @@
+# === Core Web Framework ===
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# === Database ===
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+
+# === Validation & Settings ===
+pydantic[email]==2.10.4
+pydantic-settings==2.7.1
+
+# === Auth ===
+python-jose[cryptography]==3.3.0
+bcrypt==5.0.0
+
+# === AI Pipeline ===
+openai==1.58.1
+pyannote.audio==3.3.2
+torch==2.5.1
+torchaudio==2.5.1
+
+# === RAG ===
+langchain==0.3.14
+langchain-openai==0.3.0
+langchain-chroma==0.2.2
+chromadb==0.5.23
+pymupdf==1.25.1
+
+# === Utilities ===
+python-dotenv==1.0.1
+aiofiles==24.1.0
