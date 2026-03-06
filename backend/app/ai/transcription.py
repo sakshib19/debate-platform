@@ -20,7 +20,6 @@ How it works:
 
 import logging
 from typing import List, Dict
-from faster_whisper import WhisperModel
 
 from app.config import settings
 
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 _model = None
 
 
-def _get_model() -> WhisperModel:
+def _get_model():
     """
     Load Whisper model (cached after first call).
 
@@ -45,6 +44,13 @@ def _get_model() -> WhisperModel:
     """
     global _model
     if _model is None:
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            raise ImportError(
+                "faster-whisper is not installed. "
+                "Run: pip install faster-whisper==1.1.0"
+            )
         logger.info(f"Loading Whisper model: {settings.WHISPER_MODEL_SIZE}")
         _model = WhisperModel(
             settings.WHISPER_MODEL_SIZE,

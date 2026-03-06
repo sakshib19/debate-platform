@@ -12,9 +12,35 @@ Requires: ffmpeg installed on the system (see README)
 
 import os
 import logging
-from pydub import AudioSegment
 
 logger = logging.getLogger(__name__)
+
+# ── FFmpeg path (winget install location) ───────────────────────────
+# pydub 0.25.1 uses shutil.which() to find ffmpeg/ffprobe,
+# so the bin directory must be on PATH before pydub is imported.
+FFMPEG_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", ""),
+    "Microsoft", "WinGet", "Packages",
+    "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe",
+    "ffmpeg-8.0.1-full_build", "bin",
+)
+
+if os.path.isdir(FFMPEG_DIR) and FFMPEG_DIR not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
+    logger.info("Added ffmpeg to PATH: %s", FFMPEG_DIR)
+
+
+def _get_audio_segment():
+    """Lazy import of pydub.AudioSegment."""
+    try:
+        from pydub import AudioSegment
+        return AudioSegment
+    except ImportError:
+        raise ImportError(
+            "pydub is not installed. "
+            "Run: pip install pydub==0.25.1\n"
+            "Also install ffmpeg: winget install Gyan.FFmpeg"
+        )
 
 # Audio formats we accept
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4", ".ogg", ".flac", ".webm"}
@@ -65,6 +91,7 @@ def convert_to_wav(input_path: str, output_path: str = None) -> str:
     logger.info(f"Converting {input_path} to WAV...")
 
     # Load audio (pydub auto-detects format via ffmpeg)
+    AudioSegment = _get_audio_segment()
     audio = AudioSegment.from_file(input_path)
 
     # Convert to 16kHz mono
@@ -83,5 +110,6 @@ def convert_to_wav(input_path: str, output_path: str = None) -> str:
 
 def get_audio_duration(filepath: str) -> float:
     """Get audio duration in seconds."""
+    AudioSegment = _get_audio_segment()
     audio = AudioSegment.from_file(filepath)
     return len(audio) / 1000.0  # pydub returns milliseconds

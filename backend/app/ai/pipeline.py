@@ -21,14 +21,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Debate, SpeakerResult
 from app.config import settings
-from app.ai.audio_utils import validate_audio_file, convert_to_wav
-from app.ai.transcription import transcribe
-from app.ai.diarization import diarize
-from app.ai.merger import (
-    merge_transcript_and_diarization,
-    group_by_speaker,
-    format_readable_transcript,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +54,16 @@ def process_debate(debate_id: int, db: Session) -> Dict:
     """
 
     # --- Step 1: Load debate and validate ---
+    # Lazy imports — only loaded when pipeline actually runs
+    from app.ai.audio_utils import validate_audio_file, convert_to_wav
+    from app.ai.transcription import transcribe
+    from app.ai.diarization import diarize
+    from app.ai.merger import (
+        merge_transcript_and_diarization,
+        group_by_speaker,
+        format_readable_transcript,
+    )
+
     debate = db.query(Debate).filter(Debate.id == debate_id).first()
     if not debate:
         raise ValueError(f"Debate {debate_id} not found")

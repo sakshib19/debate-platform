@@ -28,7 +28,6 @@ Requirements:
 
 import logging
 from typing import List, Dict, Optional
-from pyannote.audio import Pipeline
 
 from app.config import settings
 
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 _pipeline = None
 
 
-def _get_pipeline() -> Pipeline:
+def _get_pipeline():
     """
     Load the pyannote diarization pipeline (cached after first call).
 
@@ -55,6 +54,13 @@ def _get_pipeline() -> Pipeline:
                 "4. Set HF_TOKEN in your .env file."
             )
 
+        try:
+            from pyannote.audio import Pipeline
+        except ImportError:
+            raise ImportError(
+                "pyannote.audio is not installed. "
+                "Run: pip install pyannote.audio==3.3.2"
+            )
         logger.info("Loading pyannote diarization pipeline...")
         _pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",

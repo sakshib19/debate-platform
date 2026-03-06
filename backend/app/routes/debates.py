@@ -94,9 +94,26 @@ def process_debate_endpoint(
     if debate.status == "processing":
         raise HTTPException(status_code=409, detail="Already processing")
 
-    # Import here to avoid circular imports and loading AI models at startup
-    from app.ai.pipeline import process_debate
-    from app.database import SessionLocal
+    # Verify the audio file actually exists on disk
+    audio_path = os.path.join(settings.UPLOAD_DIR, debate.audio_filename)
+    if not os.path.exists(audio_path):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Audio file missing from disk: {debate.audio_filename}"
+        )
+
+    # Try importing pipeline — gives clear error if AI packages missing
+    try:
+        from app.ai.pipeline import process_debate
+        from app.database import SessionLocal
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI pipeline not available — missing package: {e}"
+        )
+
+    debate.status = "processing"
+    db.commit()
 
     def _run_pipeline():
         """Run in background with its own DB session."""
@@ -104,7 +121,16 @@ def process_debate_endpoint(
         try:
             process_debate(debate_id, pipeline_db)
         except Exception as e:
-            print(f"Pipeline failed for debate {debate_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Mark debate as failed
+            try:
+                d = pipeline_db.query(Debate).filter(Debate.id == debate_id).first()
+                if d:
+                    d.status = "failed"
+                    pipeline_db.commit()
+            except Exception:
+                pass
         finally:
             pipeline_db.close()
 
