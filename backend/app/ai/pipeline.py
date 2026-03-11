@@ -1,22 +1,21 @@
 """
 Pipeline Module — Orchestrates the full audio processing flow.
 
-Flow:
-1. Validate audio file
-2. Convert to WAV (for pyannote compatibility)
-3. Transcribe with Whisper → text with timestamps
-4. Diarize with Pyannote → speaker labels with timestamps
-5. Merge → assign text to speakers
-6. Group by speaker → per-speaker transcripts
-7. Save results to database (SpeakerResult table)
+Sends the audio file to the audio_service via HTTP for transcription
+and diarization, then saves results to the database.
 
-This is called when a user clicks "Process" on a debate.
+Flow:
+1. Load debate from DB, validate audio exists
+2. POST audio to audio_service /transcribe endpoint
+3. Receive merged speaker-labeled transcript
+4. Save per-speaker results to database (SpeakerResult table)
 """
 
 import os
 import logging
 from typing import Dict
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.models import Debate, SpeakerResult
@@ -24,45 +23,17 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Generous timeout: transcription of long audio can take minutes
+AUDIO_SERVICE_TIMEOUT = httpx.Timeout(timeout=600.0)
+
 
 def process_debate(debate_id: int, db: Session) -> Dict:
     """
     Full processing pipeline for a debate audio file.
 
-    Args:
-        debate_id: ID of the debate in the database
-        db: SQLAlchemy database session
-
-    Returns:
-        Dict with processing results:
-        {
-            "status": "completed",
-            "num_speakers": 4,
-            "total_segments": 42,
-            "speakers": {
-                "SPEAKER_00": {"full_transcript": "...", "total_speaking_time": 120.5},
-                ...
-            }
-        }
-
-    This function:
-    1. Loads the debate from DB to get the audio filename
-    2. Runs transcription + diarization
-    3. Merges results
-    4. Saves per-speaker results to the speaker_results table
-    5. Updates debate status to "completed"
+    Sends audio to audio_service for transcription + diarization,
+    then saves per-speaker results to the database.
     """
-
-    # --- Step 1: Load debate and validate ---
-    # Lazy imports — only loaded when pipeline actually runs
-    from app.ai.audio_utils import validate_audio_file, convert_to_wav
-    from app.ai.transcription import transcribe
-    from app.ai.diarization import diarize
-    from app.ai.merger import (
-        merge_transcript_and_diarization,
-        group_by_speaker,
-        format_readable_transcript,
-    )
 
     debate = db.query(Debate).filter(Debate.id == debate_id).first()
     if not debate:
@@ -73,47 +44,45 @@ def process_debate(debate_id: int, db: Session) -> Dict:
 
     audio_path = os.path.join(settings.UPLOAD_DIR, debate.audio_filename)
 
-    if not validate_audio_file(audio_path):
-        raise ValueError(f"Invalid audio file: {audio_path}")
+    if not os.path.exists(audio_path):
+        raise ValueError(f"Audio file not found: {audio_path}")
 
     # Update status
     debate.status = "processing"
     db.commit()
 
     try:
-        # --- Step 2: Convert to WAV ---
-        logger.info(f"[Pipeline] Step 1/5: Converting audio for debate {debate_id}")
-        wav_path = convert_to_wav(audio_path)
+        # --- Step 1: Send audio to audio_service ---
+        logger.info(f"[Pipeline] Sending audio to audio_service for debate {debate_id}")
 
-        # --- Step 3: Transcribe ---
-        logger.info(f"[Pipeline] Step 2/5: Transcribing debate {debate_id}")
-        transcript_segments = transcribe(wav_path)
+        url = f"{settings.AUDIO_SERVICE_URL}/transcribe"
+        with open(audio_path, "rb") as f:
+            files = {"file": (debate.audio_filename, f)}
+            data = {}
+            if debate.num_speakers:
+                data["num_speakers"] = str(debate.num_speakers)
 
-        if not transcript_segments:
-            raise ValueError("Transcription returned no segments — audio may be empty or corrupt")
+            response = httpx.post(url, files=files, data=data, timeout=AUDIO_SERVICE_TIMEOUT)
 
-        # --- Step 4: Diarize ---
-        logger.info(f"[Pipeline] Step 3/5: Diarizing debate {debate_id}")
-        diarization_segments = diarize(wav_path, num_speakers=debate.num_speakers)
+        if response.status_code != 200:
+            detail = response.text[:500]
+            raise RuntimeError(f"Audio service returned {response.status_code}: {detail}")
 
-        # --- Step 5: Merge ---
-        logger.info(f"[Pipeline] Step 4/5: Merging transcript and diarization")
-        merged = merge_transcript_and_diarization(transcript_segments, diarization_segments)
-        speaker_data = group_by_speaker(merged)
-        readable_transcript = format_readable_transcript(merged)
+        result = response.json()
+        speaker_data = result["speakers"]
+        readable_transcript = result.get("readable_transcript", "")
 
-        # --- Step 6: Save to database ---
-        logger.info(f"[Pipeline] Step 5/5: Saving results for debate {debate_id}")
+        # --- Step 2: Save to database ---
+        logger.info(f"[Pipeline] Saving results for debate {debate_id}")
 
         # Delete old results if re-processing
         db.query(SpeakerResult).filter(SpeakerResult.debate_id == debate_id).delete()
 
         for speaker_label, data in speaker_data.items():
-            result = SpeakerResult(
+            sr = SpeakerResult(
                 debate_id=debate_id,
                 speaker_label=speaker_label,
                 transcript=data["full_transcript"],
-                # Scores will be filled in by evaluator.py (Week 3)
                 score_content=None,
                 score_style=None,
                 score_structure=None,
@@ -125,32 +94,28 @@ def process_debate(debate_id: int, db: Session) -> Dict:
                 weaknesses=None,
                 suggestions=None,
             )
-            db.add(result)
+            db.add(sr)
 
         # Update debate status
         debate.status = "transcribed"
         db.commit()
 
-        # --- Cleanup temp WAV file ---
-        if wav_path != audio_path and os.path.exists(wav_path):
-            os.remove(wav_path)
-
         logger.info(f"[Pipeline] Debate {debate_id} processed successfully: "
-                    f"{len(speaker_data)} speakers, {len(merged)} segments")
+                    f"{len(speaker_data)} speakers")
 
         return {
             "status": "completed",
             "debate_id": debate_id,
             "num_speakers": len(speaker_data),
-            "total_segments": len(merged),
+            "total_segments": result.get("total_segments", 0),
             "readable_transcript": readable_transcript,
             "speakers": {
                 speaker: {
-                    "full_transcript": data["full_transcript"][:200] + "...",
-                    "total_speaking_time": data["total_speaking_time"],
-                    "num_segments": data["num_segments"],
+                    "full_transcript": d["full_transcript"][:200] + "...",
+                    "total_speaking_time": d["total_speaking_time"],
+                    "num_segments": d["num_segments"],
                 }
-                for speaker, data in speaker_data.items()
+                for speaker, d in speaker_data.items()
             },
         }
 

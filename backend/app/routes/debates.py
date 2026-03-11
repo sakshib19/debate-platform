@@ -1,6 +1,8 @@
 import os
 import shutil
+import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -10,7 +12,11 @@ from app.auth import get_current_user
 from app.models import User, Debate
 from app.schemas import DebateCreateRequest, DebateResponse, SpeakerResultResponse
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/debates", tags=["Debates"])
+
+AUDIO_SERVICE_TIMEOUT = httpx.Timeout(timeout=10.0)
 
 
 @router.post("/", response_model=DebateResponse, status_code=201)
@@ -94,6 +100,24 @@ def process_debate_endpoint(
     if debate.status == "processing":
         raise HTTPException(status_code=409, detail="Already processing")
 
+    # Check audio service is reachable before starting
+    try:
+        health_resp = httpx.get(
+            f"{settings.AUDIO_SERVICE_URL}/health",
+            timeout=AUDIO_SERVICE_TIMEOUT,
+        )
+        if health_resp.status_code != 200:
+            raise HTTPException(
+                status_code=503,
+                detail="Audio service is not healthy",
+            )
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=503,
+            detail="Audio service is unreachable. Ensure it is running at "
+                   f"{settings.AUDIO_SERVICE_URL}",
+        )
+
     # Verify the audio file actually exists on disk
     audio_path = os.path.join(settings.UPLOAD_DIR, debate.audio_filename)
     if not os.path.exists(audio_path):
@@ -102,15 +126,9 @@ def process_debate_endpoint(
             detail=f"Audio file missing from disk: {debate.audio_filename}"
         )
 
-    # Try importing pipeline — gives clear error if AI packages missing
-    try:
-        from app.ai.pipeline import process_debate
-        from app.database import SessionLocal
-    except ImportError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"AI pipeline not available — missing package: {e}"
-        )
+    # Import pipeline (now just uses httpx — no heavy AI deps)
+    from app.ai.pipeline import process_debate
+    from app.database import SessionLocal
 
     debate.status = "processing"
     db.commit()

@@ -2,6 +2,7 @@
 # Python
 # -------------------
 venv/
+**/audio-venv/
 __pycache__/
 *.pyc
 *.egg-info/
@@ -12,6 +13,7 @@ __pycache__/
 # -------------------
 backend/uploads/
 backend/app/ai/chroma_db/
+backend/chroma_db/
 *.pt
 *.bin
 *.onnx

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     HF_TOKEN: str = ""  # HuggingFace token for Pyannote
     WHISPER_MODEL_SIZE: str = "base" 
     UPLOAD_DIR: str = "uploads"
+    AUDIO_SERVICE_URL: str = "http://localhost:8001"
     RAG_DOCS_DIR: str = "rag_documents"
 
     class Config:

@@ -12,5 +12,27 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - audio_service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/debate_platform
+      AUDIO_SERVICE_URL: http://audio_service:8001
+    volumes:
+      - ./backend:/app
+
+  audio_service:
+    build: ./audio_service
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./audio_service/.env
+    volumes:
+      - ./audio_service:/app
+
 volumes:
   pgdata:

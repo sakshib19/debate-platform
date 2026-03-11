@@ -1,0 +1,19 @@
+# Audio Service — transcription + diarization
+#
+# Install with:
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+faster-whisper==1.1.0
+pyannote.audio==3.3.2
+pydub==0.25.1
+requests>=2.31.0
+torch==2.3.0+cpu
+torchaudio==2.3.0+cpu
+numpy>=2.0.0
+
+# Web framework (lightweight, just one endpoint)
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic-settings==2.7.1
+python-dotenv==1.0.1

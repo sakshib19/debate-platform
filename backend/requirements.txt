@@ -15,18 +15,16 @@ pydantic-settings==2.7.1
 python-jose[cryptography]==3.3.0
 bcrypt==5.0.0
 
-# === AI — Transcription & Diarization ===
-faster-whisper==1.1.0
-pyannote.audio==3.3.2
-pydub==0.25.1
-numpy==1.26.4
-torch==2.3.0
-torchaudio==2.3.0
+# === AI — RAG ===
+langchain-community==0.2.17
+langchain-core==0.2.43
+chromadb==0.5.0
+openai==1.30.1
+pypdf==5.0.0
+numpy<2
 
-# === AI — LLM & RAG (install in Week 3) ===
-# openai==1.30.1
-# langchain-core==0.2.43
-# chromadb==0.5.0
+# === HTTP client (calls audio_service) ===
+httpx==0.27.0
 
 # === Utilities ===
 python-dotenv==1.0.1
